@@ -151,6 +151,21 @@ h1, h2, h3 { text-wrap: balance; }
 .foot { font-size: 13px; color: var(--muted); border-top: 1.5px solid var(--line); padding-top: 14px; }
 .foot a { color: var(--ink); }
 
+/* home: step headings, game-mode picker */
+.step { display: grid; gap: 12px; }
+.step h2 { margin: 0; display: flex; align-items: center; gap: 10px; font: 400 18px/1.1 var(--f-display); }
+.step h2 span { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--ink); color: var(--bg); font-size: 14px; }
+.modepick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 760px) { .modepick { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 420px) { .modepick { grid-template-columns: minmax(0, 1fr); } }
+.mode { text-align: left; display: grid; gap: 2px; align-content: start; background: color-mix(in srgb, var(--card) 85%, transparent); border: 2px solid var(--line); border-radius: 12px; padding: 10px 12px; font-size: 14px; color: var(--muted); cursor: pointer; min-width: 0; }
+.mode b { display: block; color: var(--ink); font-size: 15px; }
+.mode .tag { font: 700 11px var(--f-mono); color: var(--accent); margin-left: 6px; letter-spacing: .05em; }
+.mode:hover { border-color: var(--ink); }
+.mode[aria-pressed="true"] { border-color: var(--ink); background: var(--mark); color: var(--mark-ink); box-shadow: 3px 3px 0 var(--ink); }
+.mode[aria-pressed="true"] b, .mode[aria-pressed="true"] .tag { color: var(--mark-ink); }
+.world:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; transform: none; }
+
 /* ---------- HUD ---------- */
 .hud { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 10px 0; }
 .hud-in { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; background: var(--ink); color: var(--bg); border-radius: 14px; padding: 8px 14px; }
@@ -1939,9 +1954,21 @@ for (const c of CALCS) {
   let G = null;            // the current run
   let keys = null;         // keyboard handler for the current screen
   let level = store.get('level', 'SL');
+  let mode = store.get('mode', 'mix');     // 'mix' or one round type
+  const MODES = [
+    ['mix', 'Mixed run', 'Every round type, shuffled. The full arcade run.', ''],
+    ['shift', 'Shift it', 'Read the news. Drag the curve that moves, then call what happens to price and quantity.', 'AO2'],
+    ['name', 'Name that diagram', 'A diagram flashes up. Name it before the fuse burns out.', ''],
+    ['label', 'Label drop', 'Drag the right labels onto the blanks. One label is a decoy.', 'AO4'],
+    ['hunt', 'Hunt the area', 'Tap the welfare loss, tax revenue, abnormal profit or surplus.', ''],
+    ['calc', 'Number crunch', 'Calculate from the diagram: tax revenue, PED, the multiplier and more.', 'HL · AO4'],
+  ];
+  const modeName = m => MODES.find(x => x[0] === m)[1];
 
   /* ---------- pools ---------- */
   const inWorld = (w, u) => w.units.includes(u);
+  // how many items a round type has in a world at a level (used before a run starts)
+  const hasRounds = (type, w, lv) => { const g = G; G = { world: w, level: lv }; try { return POOLS[type]().length > 0; } finally { G = g; } };
   const diagPool = () => DIAGRAMS.filter(d => inWorld(G.world, d.u) && (G.level === 'HL' || !d.hl));
   const scenPool = () => SCENARIOS.filter(s => inWorld(G.world, MODELS[s.m].u) && (G.level === 'HL' || !MODELS[s.m].hl));
   const labelPool = () => diagPool().filter(d => DG.labels(d).length >= 3);
@@ -1964,14 +1991,15 @@ for (const c of CALCS) {
   const mult = () => Math.min(5, 1 + Math.floor(G.streak / 3));
   const speed = () => Math.max(0.55, 1 - 0.08 * (G.lvl - 1));
   const starsFor = s => STARS.filter(t => s >= t).length;
-  const bestKey = w => `best:${w}:${level}`;
+  const bestKey = (w, m = mode) => `best:${w}:${level}` + (m === 'mix' ? '' : ':' + m);
   const starSvg = on => `<svg viewBox="0 0 24 24" class="${on ? 'on' : 'off'}" aria-hidden="true"><path stroke-width="1.6" stroke-linejoin="round" d="M12 2.8l2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.1l-5.7 3.2 1.2-6.4-4.7-4.4 6.4-.8z"/></svg>`;
   const heart = cls => `<svg viewBox="0 0 24 24" class="${cls}" aria-hidden="true"><path d="M12 21s-7.5-4.6-9.6-9.3C.9 8.3 3 4.5 6.7 4.5c2.2 0 3.6 1.2 5.3 3.1 1.7-1.9 3.1-3.1 5.3-3.1 3.7 0 5.8 3.8 4.3 7.2C19.5 16.4 12 21 12 21z"/></svg>`;
 
   /* ---------- HOME ---------- */
   function home() {
     G = null; stopTimer(); $('#hud').hidden = true;
-    const rule = (n, t, tag = '') => `<li><b>${n}${tag ? `<span class="tag">${tag}</span>` : ''}</b>${t}</li>`;
+    if (mode === 'calc' && level !== 'HL') mode = 'mix';
+    const modes = MODES.filter(([id]) => id !== 'calc' || level === 'HL');
     $('#main').innerHTML = `<section class="home">
       <div class="title">
         <h1><span class="shift">Shift</span> Happens</h1>
@@ -1985,36 +2013,35 @@ for (const c of CALCS) {
         </span>
         <span class="hint">${level === 'SL' ? 'Core diagrams that every student needs.' : 'Adds the HL-only diagrams, the money market and Number crunch calculations.'}</span>
       </div>
+      <div class="step"><h2><span>1</span> Choose a game mode</h2>
+        <div class="modepick" role="group" aria-label="Game mode">${modes.map(([id, n, t, tag]) => `<button type="button" class="mode${id === 'mix' ? ' mix' : ''}" data-m="${id}" aria-pressed="${mode === id}"><b>${n}${tag ? `<span class="tag">${tag}</span>` : ''}</b><span>${t}</span></button>`).join('')}</div>
+      </div>
+      <div class="step"><h2><span>2</span> Pick a world to start</h2>
       <div class="worlds">${WORLDS.map(w => {
-        const b = store.get(`best:${w.id}:${level}`, 0), n = starsFor(b);
-        return `<button type="button" class="world" data-w="${w.id}">
+        const ok = mode === 'mix' || hasRounds(mode, w, level);
+        const b = store.get(bestKey(w.id), 0), n = starsFor(b);
+        return `<button type="button" class="world" data-w="${w.id}" ${ok ? '' : 'disabled'}>
           <span class="wn">${w.name}</span><span class="wb">${w.blurb}</span>
-          <span class="wf"><span>Best <b>${b.toLocaleString('en-US')}</b></span><span class="stars" aria-label="${n} of 3 stars">${[0, 1, 2].map(i => starSvg(i < n)).join('')}</span></span>
+          <span class="wf">${ok ? `<span>Best <b>${b.toLocaleString('en-US')}</b></span><span class="stars" aria-label="${n} of 3 stars">${[0, 1, 2].map(i => starSvg(i < n)).join('')}</span>` : `<span>No ${modeName(mode)} rounds in this world</span>`}</span>
         </button>`;
-      }).join('')}</div>
-      <ul class="rules">
-        ${rule('Shift it', 'Read the news. Drag the curve that moves, then call what happens to price and quantity.', 'AO2')}
-        ${rule('Name that diagram', 'A diagram flashes up. Name it before the fuse burns out.')}
-        ${rule('Label drop', 'Drag the right labels onto the blanks. One label is a decoy.', 'AO4')}
-        ${rule('Hunt the area', 'Tap the welfare loss, tax revenue, abnormal profit or surplus.')}
-        ${level === 'HL' ? rule('Number crunch', 'Calculate from the diagram: tax revenue, PED, the multiplier and more.', 'HL · AO4') : ''}
-      </ul>
+      }).join('')}</div></div>
       <p class="basics">Points = 100 + a time bonus, times your streak multiplier (×2 at 3 in a row, up to ×5). Every 5 correct answers you level up and the fuse gets shorter. A streak of 10 wins an extra life. Stars at ${STARS.map(s => s.toLocaleString('en-US')).join(', ')} points.</p>
       <p class="foot">Want to study first? Every diagram, with model answers, is in <a href="https://harrisonarmour57-web.github.io/ib-diagram-drill/" target="_blank" rel="noopener">IB Diagram Drill</a>. Diagrams are redrawn for practice and follow the IB Economics guide (first assessment 2022). Scores are saved in this browser only.</p>
     </section>`;
     $$('[data-lv]').forEach(b => b.onclick = () => { level = b.dataset.lv; store.set('level', level); home(); });
+    $$('[data-m]').forEach(b => b.onclick = () => { mode = b.dataset.m; store.set('mode', mode); home(); $(`[data-m="${mode}"]`).focus({ preventScroll: true }); });
     $$('[data-w]').forEach(b => b.onclick = () => start(WORLDS.find(w => w.id === b.dataset.w)));
     keys = null;
   }
 
   /* ---------- RUN ---------- */
   function start(world) {
-    G = { world, level, score: 0, lives: LIVES, streak: 0, top: 0, lvl: 1, right: 0, rounds: 0, recent: [], missed: new Map(), last: null };
+    G = { world, level, mode, score: 0, lives: LIVES, streak: 0, top: 0, lvl: 1, right: 0, rounds: 0, recent: [], missed: new Map(), last: null };
     $('#hud').hidden = false; hud(); next();
   }
   function hud(pop) {
     $('#hud').innerHTML = `<div class="hud-in">
-      <span class="logo"><span>Shift</span> Happens · ${G.world.name} ${G.level}</span>
+      <span class="logo"><span>Shift</span> Happens · ${G.mode === 'mix' ? '' : modeName(G.mode) + ' · '}${G.world.name} ${G.level}</span>
       <span class="stat"><small>Score</small><b id="hs">${G.score.toLocaleString('en-US')}${pop ? `<span class="pop">${pop}</span>` : ''}</b></span>
       <span class="stat"><small>Streak</small><b>${G.streak}${mult() > 1 ? `<em>×${mult()}</em>` : ''}</b></span>
       <span class="stat"><small>Level</small><b>${G.lvl}</b></span>
@@ -2030,6 +2057,7 @@ for (const c of CALCS) {
   }
 
   function pickType() {
+    if (G.mode !== 'mix') return G.mode;
     const avail = Object.entries(ROUNDS).filter(([k]) => POOLS[k]().length);
     let opts = avail.filter(([k]) => k !== G.last); if (!opts.length) opts = avail;
     const tot = opts.reduce((a, [, r]) => a + r.w, 0); let x = Math.random() * tot;
@@ -2366,14 +2394,14 @@ for (const c of CALCS) {
   function over() {
     if (!G) return home();
     stopTimer(); const unfinished = G.round && !G.round.done; if (G.round) G.round.done = true;
-    const key = bestKey(G.world.id), prev = store.get(key, 0), isBest = G.score > prev;
+    const key = bestKey(G.world.id, G.mode), prev = store.get(key, 0), isBest = G.score > prev;
     if (isBest) store.set(key, G.score);
     const n = starsFor(G.score), answered = G.rounds - (unfinished ? 1 : 0);
     const acc = answered ? Math.round(100 * G.right / answered) : 0;
     const missed = [...G.missed.values()];
     $('#hud').hidden = true;
     $('#main').innerHTML = `<section class="over">
-      <div><p class="eyebrow"><span class="rt">${G.world.name} · ${G.level}</span></p>
+      <div><p class="eyebrow"><span class="rt">${modeName(G.mode)} · ${G.world.name} · ${G.level}</span></p>
         <h1>${G.lives <= 0 ? 'Game over' : 'Run ended'}</h1></div>
       <div class="row">${isBest && G.score ? '<span class="newbest">New best!</span>' : ''}<span class="stars" aria-label="${n} of 3 stars">${[0, 1, 2].map(i => starSvg(i < n)).join('')}</span></div>
       <div class="tally">
@@ -2385,7 +2413,7 @@ for (const c of CALCS) {
         <div><small>Level</small><b>${G.lvl}</b></div>
       </div>
       ${missed.length ? `<div class="review"><h2>Revise these diagrams</h2><ul>${missed.map(d => `<li><b>${H(d.t)}</b><span>${H(d.tip)}</span></li>`).join('')}</ul></div>` : ''}
-      <div class="row"><button type="button" class="btn" id="again">Play ${G.world.name} again</button><button type="button" class="btn ghost" id="home">Choose a world</button></div>
+      <div class="row"><button type="button" class="btn" id="again">Play ${G.world.name} again</button><button type="button" class="btn ghost" id="home">Change mode or world</button></div>
     </section>`;
     const w = G.world; G = null;
     $('#again').onclick = () => start(w); $('#home').onclick = home; $('#again').focus({ preventScroll: true });
